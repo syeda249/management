@@ -156,7 +156,7 @@ $teacher_count = $conn->query("SELECT id FROM teachers")->num_rows;
            <a href="manage_students.php" class="menu-item">🎓 Manage Students</a>
   <a href="attendance.php" class="menu-item">📅 Attendance</a>
            
-            <a href="fees.php" class="menu-item">💰 Fee Management</a>
+            <a href="fee_management.php" class="menu-item">💰 Fee Management</a>
             <a href="setting.php" class="menu-item">⚙️ Profile Settings</a>
         </div>
     </div>
