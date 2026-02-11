@@ -1,174 +1,170 @@
-<?php
-session_start();
-include 'db.php';
-
-// Access Control
-if (!isset($_SESSION['role'])) { header("Location: index.php"); exit(); }
+<?php 
+include('db.php');
 
 $message = "";
 
-// --- 1. ARCHIVE/RESTORE LOGIC ---
-if (isset($_GET['left_id'])) {
-    $id = intval($_GET['left_id']);
-    $conn->query("UPDATE students SET status = 0 WHERE id = $id");
-    $message = "<div class='alert danger'>✅ Student moved to Archive (Left School).</div>";
-}
-if (isset($_GET['restore_id'])) {
-    $id = intval($_GET['restore_id']);
-    $conn->query("UPDATE students SET status = 1 WHERE id = $id");
-    $message = "<div class='alert success'>✅ Student restored to Active list!</div>";
+// 1. DELETE STUDENT LOGIC
+if (isset($_GET['delete_id'])) {
+    $id = mysqli_real_escape_string($conn, $_GET['delete_id']);
+    mysqli_query($conn, "DELETE FROM students WHERE id = '$id'");
+    $message = "<div class='alert danger'>✅ Student record deleted successfully.</div>";
 }
 
-// --- 2. REGISTRATION & UPDATE LOGIC (FIXED) ---
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+// 2. ADD NEW CLASS LOGIC
+if (isset($_POST['add_class'])) {
+    $c_name = mysqli_real_escape_string($conn, $_POST['new_class_name']);
+    $section = mysqli_real_escape_string($conn, $_POST['section_type']);
+    mysqli_query($conn, "INSERT INTO classes (class_name, section) VALUES ('$c_name', '$section')");
+    $message = "<div class='alert success'>✅ New Class '$c_name' added to the system.</div>";
+}
+
+// 3. REGISTER NEW STUDENT
+if (isset($_POST['register_student'])) {
     $name = mysqli_real_escape_string($conn, $_POST['name']);
-    $roll_no = mysqli_real_escape_string($conn, $_POST['roll_no']);
     $class = mysqli_real_escape_string($conn, $_POST['class']);
-    $gender = mysqli_real_escape_string($conn, $_POST['gender']);
     $phone = mysqli_real_escape_string($conn, $_POST['phone']);
-    $fp_data = mysqli_real_escape_string($conn, $_POST['fingerprint_data']);
+    
+    // Auto Roll No Generation (Class wise)
+    $res = mysqli_query($conn, "SELECT MAX(roll_no) as last_roll FROM students WHERE class = '$class'");
+    $row = mysqli_fetch_assoc($res);
+    $roll_no = ($row['last_roll'] > 0) ? $row['last_roll'] + 1 : 1;
 
-    // Check if uploads folder exists, if not, create it automatically
-    if (!is_dir('uploads')) {
-        mkdir('uploads', 0777, true);
-    }
-
-    $photo_query = "";
-    if (!empty($_FILES['photo']['name'])) {
-        $photo_name = time() . "_" . basename($_FILES['photo']['name']);
-        $target_path = "uploads/" . $photo_name;
-        
-        if (move_uploaded_file($_FILES['photo']['tmp_name'], $target_path)) {
-            $photo_query = ", photo='$photo_name'";
-        } else {
-            $message = "<div class='alert danger'>❌ Photo upload failed! Make sure 'uploads' folder has write permissions.</div>";
-        }
-    }
-
-    if (isset($_POST['update_student'])) {
-        $id = intval($_POST['student_id']);
-        $sql = "UPDATE students SET name='$name', roll_no='$roll_no', class='$class', gender='$gender', phone='$phone', fingerprint_data='$fp_data' $photo_query WHERE id=$id";
-        if($conn->query($sql)) $message = "<div class='alert success'>✅ Records updated successfully!</div>";
-    } else {
-        $final_photo = !empty($photo_name) ? $photo_name : "default.png";
-        $sql = "INSERT INTO students (name, roll_no, class, gender, phone, photo, fingerprint_data, status) 
-                VALUES ('$name', '$roll_no', '$class', '$gender', '$phone', '$final_photo', '$fp_data', 1)";
-        if($conn->query($sql)) $message = "<div class='alert success'>✅ Student Registered Successfully!</div>";
+    $query = "INSERT INTO students (name, class, roll_no, phone, password) VALUES ('$name', '$class', '$roll_no', '$phone', '123456')";
+    if(mysqli_query($conn, $query)){
+        $message = "<div class='alert success'>✅ $name enrolled in $class (Roll No: $roll_no).</div>";
     }
 }
 
-// --- 3. FETCH DATA ---
-$edit_data = (isset($_GET['edit_id'])) ? $conn->query("SELECT * FROM students WHERE id = ".intval($_GET['edit_id']))->fetch_assoc() : null;
-$count_boys = $conn->query("SELECT COUNT(*) as t FROM students WHERE gender='Male' AND status=1")->fetch_assoc()['t'];
-$count_girls = $conn->query("SELECT COUNT(*) as t FROM students WHERE gender='Female' AND status=1")->fetch_assoc()['t'];
-$active_students = $conn->query("SELECT * FROM students WHERE status = 1 ORDER BY id DESC");
+// Sequence for display
+$cl_order = ['Nursery','Prep','1st','2nd','3rd','4th','5th','6th','7th','8th','9th','10th','11th','12th','BS','Masters','PHD'];
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Manage Students | School Portal</title>
+    <meta charset="UTF-8">
+    <title>Student Management | Admin Portal</title>
     <style>
-        :root { --primary: #2c3e50; --accent: #3498db; --success: #2ecc71; --danger: #e74c3c; --bg: #f4f7f6; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: var(--bg); }
-        .main { margin-left: 250px; flex: 1; padding: 30px; min-height: 100vh; }
-        .stats-row { display: flex; gap: 20px; margin-bottom: 20px; }
-        .stat-card { background: white; padding: 15px; border-radius: 8px; flex: 1; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-top: 4px solid var(--accent); }
-        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
-        .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-        input, select { padding: 10px; border: 1px solid #ddd; border-radius: 5px; width: 100%; box-sizing: border-box; }
-        table { width: 100%; border-collapse: collapse; background: white; margin-top: 10px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
-        th { background: #f8f9fa; color: #555; }
-        .std-photo { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #eee; }
-        .btn { padding: 8px 15px; border-radius: 5px; text-decoration: none; color: white; border: none; cursor: pointer; font-size: 12px; font-weight: bold; }
+        :root { --primary: #0f172a; --accent: #2563eb; --success: #059669; --danger: #dc2626; --bg: #f8fafc; --border: #e2e8f0; }
+        body { font-family: 'Inter', sans-serif; margin: 0; display: flex; background: var(--bg); }
+        
+        .sidebar { width: 260px; background: var(--primary); color: white; height: 100vh; position: fixed; }
+        .sidebar-header { padding: 25px; background: #020617; font-weight: 800; text-align: center; }
+        .sidebar a { padding: 14px 20px; color: #94a3b8; text-decoration: none; display: block; border-bottom: 1px solid #1e293b; }
+        .sidebar a:hover, .active { background: #1e293b; color: white; }
+
+        .main { margin-left: 260px; flex: 1; padding: 30px; }
+        .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-bottom: 30px; }
+        .card { background: white; border-radius: 12px; padding: 20px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        
+        input, select { padding: 10px; border: 1px solid var(--border); border-radius: 8px; width: 100%; margin-bottom: 15px; }
+        .btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; color: white; text-decoration: none; }
+        .btn-primary { background: var(--accent); }
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); font-size: 0.8rem; }
+        
+        .table-container { background: white; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 25px; }
+        .table-header { padding: 15px; background: #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+        
+        .badge { background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold; }
         .alert { padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
-        .success { background: #d4edda; color: #155724; border-left: 5px solid var(--success); }
-        .danger { background: #f8d7da; color: #721c24; border-left: 5px solid var(--danger); }
+        .success { background: #ecfdf5; color: #065f46; border-left: 5px solid var(--success); }
+        .danger { background: #fef2f2; color: #991b1b; border-left: 5px solid var(--danger); }
+        .promote-link { background: var(--accent); color: white; padding: 5px 12px; border-radius: 6px; font-size: 0.8rem; text-decoration: none; }
     </style>
 </head>
 <body>
 
-<?php include 'sidebar.php'; ?>
+<div class="sidebar">
+    <div class="sidebar-header">SCHOOL ERP</div>
+    <a href="dashboard.php">🏠 Dashboard</a>
+    <a href="manage_students.php" class="active">🎓 Manage Students</a>
+    <a href="promotion.php">📈 Class Promotion</a>
+    <a href="attendance.php">📅 Mark Attendance</a>
+    <a href="fee_management.php">💰 Fee Management</a>
+    <a href="logout.php">🚪 Logout</a>
+</div>
 
 <div class="main">
-    <div class="stats-row">
-        <div class="stat-card"><h3>👦 Boys: <?php echo $count_boys; ?></h3></div>
-        <div class="stat-card"><h3>👧 Girls: <?php echo $count_girls; ?></h3></div>
-    </div>
-
+    <h1>Student & Class Administration</h1>
     <?php echo $message; ?>
 
-    <div class="card">
-        <h3><?php echo $edit_data ? "✏️ Edit Student" : "➕ Register Student"; ?></h3>
-        <form method="POST" enctype="multipart/form-data">
-            <?php if($edit_data): ?><input type="hidden" name="student_id" value="<?php echo $edit_data['id']; ?>"><?php endif; ?>
-            <div class="form-grid">
-                <input type="text" name="name" placeholder="Full Name" value="<?php echo $edit_data['name'] ?? ''; ?>" required>
-                <input type="text" name="roll_no" placeholder="Roll No" value="<?php echo $edit_data['roll_no'] ?? ''; ?>" required>
-                
-                <select name="gender">
-                    <option value="Male" <?php echo (isset($edit_data['gender']) && $edit_data['gender']=='Male')?'selected':''; ?>>Male</option>
-                    <option value="Female" <?php echo (isset($edit_data['gender']) && $edit_data['gender']=='Female')?'selected':''; ?>>Female</option>
+    <div class="grid">
+        <div class="card">
+            <h3>🏫 Add New Class</h3>
+            <form method="POST">
+                <input type="text" name="new_class_name" placeholder="e.g. 10th, BS-CS" required>
+                <select name="section_type">
+                    <option value="School">School</option>
+                    <option value="College">College</option>
+                    <option value="University">University</option>
                 </select>
+                <button type="submit" name="add_class" class="btn btn-success" style="width:100%">Register Class</button>
+            </form>
+        </div>
 
-                <select name="class" required>
-                    <option value="">Select Class</option>
-                    <?php 
-                    $classes = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
-                    foreach($classes as $c) {
-                        $sel = (isset($edit_data['class']) && $edit_data['class'] == $c) ? 'selected' : '';
-                        echo "<option value='$c' $sel>$c Class</option>";
-                    }
-                    ?>
-                </select>
-
-                <input type="text" name="phone" placeholder="Parent Phone" value="<?php echo $edit_data['phone'] ?? ''; ?>">
-                <input type="file" name="photo">
-                
-                <div style="grid-column: span 1; display:flex; align-items:center; gap:10px;">
-                    <input type="hidden" name="fingerprint_data" id="fp_data" value="<?php echo $edit_data['fingerprint_data'] ?? ''; ?>">
-                    <button type="button" onclick="scanFP()" style="background:#f39c12; color:white; border:none; border-radius:5px; cursor:pointer; padding:10px;">👆 Scan</button>
-                    <span id="fp_msg" style="font-size:11px;"><?php echo !empty($edit_data['fingerprint_data']) ? "✅ Scanned" : "No Scan"; ?></span>
+        <div class="card">
+            <h3>🎓 New Enrollment</h3>
+            <form method="POST">
+                <div style="display:flex; gap:15px;">
+                    <input type="text" name="name" placeholder="Full Name" required>
+                    <select name="class" required>
+                        <option value="">Select Class</option>
+                        <?php 
+                        $cl_list = mysqli_query($conn, "SELECT class_name FROM classes ORDER BY id ASC");
+                        while($c = mysqli_fetch_assoc($cl_list)) echo "<option value='".$c['class_name']."'>".$c['class_name']."</option>";
+                        ?>
+                    </select>
                 </div>
-                
-                <button type="submit" name="<?php echo $edit_data ? 'update_student' : 'register_student'; ?>" class="btn" style="background:var(--success); grid-column: span 2;">
-                    <?php echo $edit_data ? 'Update Student Information' : 'Register Student'; ?>
-                </button>
-            </div>
-        </form>
+                <input type="text" name="phone" placeholder="Guardian Phone Number" required>
+                <button type="submit" name="register_student" class="btn btn-primary" style="width:100%">Enroll Student</button>
+            </form>
+        </div>
     </div>
 
-    <div class="card">
-        <h3>🟢 Active Students</h3>
+    <?php 
+    foreach ($cl_order as $current_cl) {
+        $st_res = mysqli_query($conn, "SELECT * FROM students WHERE class = '$current_cl' ORDER BY roll_no ASC");
+        if (mysqli_num_rows($st_res) > 0) {
+    ?>
+    <div class="table-container">
+        <div class="table-header">
+            <div>
+                <b>Class:</b> <?php echo $current_cl; ?> 
+                <span class="badge" style="margin-left:10px;">Enrolled: <?php echo mysqli_num_rows($st_res); ?></span>
+            </div>
+            <a href="promotion.php?view_class=<?php echo $current_cl; ?>" class="promote-link">📈 Promote This Class</a>
+        </div>
         <table>
-            <thead><tr><th>Photo</th><th>Roll</th><th>Name</th><th>Class</th><th>Parent Contact</th><th>Action</th></tr></thead>
-            <tbody>
-                <?php while($row = $active_students->fetch_assoc()): ?>
+            <thead>
                 <tr>
-                    <td><img src="uploads/<?php echo $row['photo']; ?>" class="std-photo" onerror="this.src='https://via.placeholder.com/45'"></td>
-                    <td><?php echo $row['roll_no']; ?></td>
-                    <td><strong><?php echo $row['name']; ?></strong></td>
-                    <td><?php echo $row['class']; ?></td>
-                    <td><?php echo $row['phone']; ?></td>
-                    <td>
-                        <a href="manage_students.php?edit_id=<?php echo $row['id']; ?>" class="btn" style="background:#f39c12;">Edit</a>
-                        <a href="manage_students.php?left_id=<?php echo $row['id']; ?>" class="btn" style="background:var(--danger);" onclick="return confirm('Archive this student?')">Mark Left</a>
+                    <th>Roll No</th>
+                    <th>Full Name</th>
+                    <th>Phone</th>
+                    <th style="text-align:right">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php while($s = mysqli_fetch_assoc($st_res)): ?>
+                <tr>
+                    <td><span class="badge">#<?php echo $s['roll_no']; ?></span></td>
+                    <td><b><?php echo $s['name']; ?></b></td>
+                    <td><?php echo $s['phone']; ?></td>
+                    <td style="text-align:right">
+                        <a href="?delete_id=<?php echo $s['id']; ?>" class="btn btn-danger" onclick="return confirm('Delete student permanently?')">Delete</a>
                     </td>
                 </tr>
                 <?php endwhile; ?>
             </tbody>
         </table>
     </div>
+    <?php 
+        }
+    } 
+    ?>
 </div>
 
-<script>
-    function scanFP() {
-        let id = "FP_" + Math.random().toString(36).substr(2, 5).toUpperCase();
-        document.getElementById('fp_data').value = id;
-        document.getElementById('fp_msg').innerText = "✅ Scanned: " + id;
-        document.getElementById('fp_msg').style.color = "green";
-    }
-</script>
 </body>
 </html>
