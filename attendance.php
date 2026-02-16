@@ -1,5 +1,6 @@
 <?php 
 session_start();
+<<<<<<< Updated upstream
 
 // 1. Security Check: Agar login nahi hai to login page par bhej do
 if (!isset($_SESSION['user_id'])) {
@@ -46,11 +47,52 @@ if (isset($_POST['save_attendance'])) {
 }
 
 $ordered_classes = ['Nursery', 'Prep', '1', '2', '3', '4', '5', '6', '7', '8', '9th', '10th', '1st year', '2nd year'];
-?>
+=======
+include 'db.php';
+if(!isset($_SESSION['role']) || $_SESSION['role']!=='teacher'){header("Location: login.php");exit();}
+$teacher_user_id = $_SESSION['user_id'];
+$teacher = $conn->query("SELECT id FROM teachers WHERE user_id=$teacher_user_id")->fetch_assoc();
+$teacher_id = $teacher['id'];
 
+// Get teacher classes
+$classes = $conn->query("
+SELECT DISTINCT c.class_name
+FROM teacher_schedule ts
+JOIN classes c ON ts.class_id=c.id
+WHERE ts.teacher_id=$teacher_id
+");
+
+// Save attendance
+if(isset($_POST['save_attendance'])){
+    $date=$_POST['att_date'];
+    $class=$_POST['att_class'];
+    foreach($_POST['status'] as $sid=>$status){
+        $sid=intval($sid); $status=mysqli_real_escape_string($conn,$status);
+        $check=mysqli_query($conn,"SELECT id FROM attendance WHERE student_id=$sid AND date='$date'");
+        if(mysqli_num_rows($check)>0){
+            mysqli_query($conn,"UPDATE attendance SET status='$status' WHERE student_id=$sid AND date='$date'");
+        }else{
+            mysqli_query($conn,"INSERT INTO attendance(student_id,class,date,status) VALUES($sid,'$class','$date','$status')");
+        }
+    }
+    header("Location: attendance.php?msg=1");exit();
+}
+
+// Selected class/date
+$selected_class = $_GET['class'] ?? '';
+$selected_date = $_GET['date'] ?? date('Y-m-d');
+
+$students=[];
+if($selected_class){
+    $res=$conn->query("SELECT * FROM students WHERE class='$selected_class' ORDER BY roll_no ASC");
+    while($s=$res->fetch_assoc()) $students[]=$s;
+}
+>>>>>>> Stashed changes
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<<<<<<< Updated upstream
     <meta charset="UTF-8">
     <title>Attendance System | School Portal</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -174,6 +216,76 @@ $ordered_classes = ['Nursery', 'Prep', '1', '2', '3', '4', '5', '6', '7', '8', '
         document.querySelectorAll('.p-check').forEach(el => el.checked = true);
     }
 </script>
+=======
+<title>Attendance</title>
+<style>
+body{font-family:Poppins,sans-serif;margin:0;display:flex;background:#f4f6f8}
+.sidebar{width:240px;background:#1e293b;color:white;height:100vh;position:fixed}
+.sidebar-header{padding:25px;text-align:center;font-weight:700;background:#0f172a}
+.sidebar a{padding:15px 20px;color:#94a3b8;text-decoration:none;display:block;border-bottom:1px solid #334155;transition:0.3s}
+.sidebar a:hover,.active{background:#334155;color:white;border-left:5px solid #3b82f6}
+.main{margin-left:240px;flex:1;padding:30px}
+.card{background:white;padding:20px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.05);margin-bottom:30px}
+h2,h3{color:#1a73e8;margin-top:0}
+table{width:100%;border-collapse:collapse;margin-top:15px}
+th,td{padding:10px;border:1px solid #ddd;text-align:center}
+th{background:#1a73e8;color:white}
+select,input{padding:8px;border-radius:6px;border:1px solid #ccc;margin-bottom:10px}
+.btn{padding:8px 15px;border:none;border-radius:8px;background:#3b82f6;color:white;cursor:pointer}
+.alert{padding:10px;background:#dcfce7;color:#166534;margin-bottom:15px;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="sidebar">
+<div class="sidebar-header">SCHOOL ERP</div>
+<a href="teacher_dashboard.php">🏠 Dashboard</a>
+<a href="attendance.php" class="active">📅 Attendance</a>
+<a href="marks.php">📝 Marks</a>
+<a href="files.php">📁 Files</a>
+<a href="logout.php">🚪 Logout</a>
+</div>
 
+<div class="main">
+<h2>Mark Attendance</h2>
+<?php if(isset($_GET['msg'])) echo "<div class='alert'>✅ Attendance updated!</div>"; ?>
+
+<form method="GET">
+Class: 
+<select name="class" onchange="this.form.submit()">
+<option value="">-- Select Class --</option>
+<?php while($c=$classes->fetch_assoc()): ?>
+<option value="<?= $c['class_name'] ?>" <?= ($selected_class==$c['class_name'])?'selected':'' ?>><?= $c['class_name'] ?></option>
+<?php endwhile; ?>
+</select>
+Date: <input type="date" name="date" value="<?= $selected_date ?>" onchange="this.form.submit()">
+</form>
+>>>>>>> Stashed changes
+
+<?php if($students): ?>
+<form method="POST">
+<input type="hidden" name="att_class" value="<?= $selected_class ?>">
+<input type="hidden" name="att_date" value="<?= $selected_date ?>">
+<table>
+<tr><th>Roll</th><th>Student</th><th>Status</th></tr>
+<?php foreach($students as $s): ?>
+<tr>
+<td><?= $s['roll_no'] ?></td>
+<td><?= htmlspecialchars($s['name']) ?></td>
+<td>
+<select name="status[<?= $s['id'] ?>]">
+<option value="P">Present</option>
+<option value="A">Absent</option>
+</select>
+</td>
+</tr>
+<?php endforeach; ?>
+</table>
+<button type="submit" name="save_attendance" class="btn">💾 Save Attendance</button>
+</form>
+<?php else: ?>
+<p style="padding:20px;">Select a class to load students.</p>
+<?php endif; ?>
+
+</div>
 </body>
 </html>

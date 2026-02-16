@@ -1,12 +1,27 @@
-<?php
-session_start();
-include 'db.php';
+<?php 
+session_start(); 
+include 'db.php';  
 
-if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'super_admin' && $_SESSION['role'] !== 'admin')) {
+if (!isset($_SESSION['role']) || 
+   ($_SESSION['role'] !== 'super_admin' && $_SESSION['role'] !== 'admin')) {
     exit("Access Denied");
 }
 
-/* Insert schedule */
+/* =========================
+   ADD NEW SUBJECT
+========================= */
+if(isset($_POST['add_subject'])){
+    $new_subject = mysqli_real_escape_string($conn, $_POST['new_subject']);
+
+    if(!empty($new_subject)){
+        $conn->query("INSERT INTO subjects (subject_name) VALUES ('$new_subject')");
+        $msg = "✅ Subject Added Successfully!";
+    }
+}
+
+/* =========================
+   INSERT SCHEDULE
+========================= */
 if(isset($_POST['assign'])){
     $teacher_id  = $_POST['teacher_id'];
     $class_ids   = $_POST['class_id'];
@@ -32,24 +47,34 @@ if(isset($_POST['assign'])){
     $success = "✅ Schedule Assigned Successfully!";
 }
 
-/* Fetch teachers */
+/* =========================
+   FETCH TEACHERS
+========================= */
 $teachers = $conn->query("SELECT id,name FROM teachers");
 
-/* Fetch classes */
+/* =========================
+   FETCH CLASSES
+========================= */
 $all_classes = [];
 $result = $conn->query("SELECT id,class_name,section FROM classes");
 while($row = $result->fetch_assoc()){
     $all_classes[] = $row;
 }
 
-/* Subjects */
-$subjects_list = ['Mathematics','English','Science','Physics','Chemistry','Biology','Computer','History','Geography'];
+/* =========================
+   FETCH SUBJECTS
+========================= */
+$subjects_list = [];
+$subjects = $conn->query("SELECT * FROM subjects");
+while($s = $subjects->fetch_assoc()){
+    $subjects_list[] = $s;
+}
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
 <title>Assign Teacher Schedule</title>
-
 
 <style>
 body{font-family:sans-serif;background:#f4f4f4;padding:30px}
@@ -85,7 +110,9 @@ function addRow(){
 
     let subjectOptions = `<option value="">Select Subject</option>`;
     <?php foreach($subjects_list as $sub): ?>
-        subjectOptions += `<option value="<?= $sub ?>"><?= $sub ?></option>`;
+        subjectOptions += `<option value="<?= $sub['subject_name'] ?>">
+            <?= $sub['subject_name'] ?>
+        </option>`;
     <?php endforeach; ?>
 
     row.innerHTML = `
@@ -112,10 +139,26 @@ function addRow(){
 
 <body>
 <div class="card">
+
 <h2>📅 Assign Teacher Schedule</h2>
 
 <?php if(isset($success)) echo "<p style='color:green'>$success</p>"; ?>
+<?php if(isset($msg)) echo "<p style='color:green'>$msg</p>"; ?>
 
+<!-- =========================
+     ADD SUBJECT FORM
+========================= -->
+<h3>➕ Add New Subject</h3>
+<form method="POST">
+    <input type="text" name="new_subject" placeholder="Enter Subject Name" required>
+    <button type="submit" name="add_subject">Add Subject</button>
+</form>
+
+<hr>
+
+<!-- =========================
+     SCHEDULE FORM
+========================= -->
 <form method="POST">
 
 <label>Teacher</label>
@@ -139,6 +182,7 @@ function addRow(){
 
 <button type="button" onclick="addRow()">➕ Add Row</button>
 <br><br>
+
 <button name="assign">✅ Assign Schedule</button>
 
 </form>

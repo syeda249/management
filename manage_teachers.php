@@ -136,6 +136,7 @@ input,select{padding:8px;margin:5px;width:180px}
 <a href="salaries_list.php" style="color:white;display:block">📄 Salary List</a><br>
 <hr style="border:0.5px solid #555">
 <a href="logout.php" style="color:#ff7675;display:block">🚪 Logout</a>
+<a href="reset_teachers.php" style="color:#ff7675;display:block">🚪 reset_teachers</a>
 </div>
 
 <div class="main">

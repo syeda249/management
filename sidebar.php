@@ -10,6 +10,7 @@
 <a href="attendance_report.php" id="nav-report">📊 Attendance Report</a>
     <a href="fee_management.php" id="nav-fee">💰 Fee Management</a>
     <a href="setting.php" id="nav-profile">⚙️ Profile Settings</a>
+    <a href="reset_teachers.php" style="color:#ff7675;display:block">🚪 reset_teachers</a>
     <a href="logout.php">🚪 Logout</a>
 
 </div>

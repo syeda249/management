@@ -78,7 +78,11 @@ $ordered_classes = [
     <a href="manage_students.php" class="active">🎓 Manage Students</a>
     <a href="promotion.php">📈 Class Promotion</a>
     <a href="attendance.php">📅 Mark Attendance</a>
+<<<<<<< Updated upstream
     <a href="attendance_report.php" class="active"> 📊Attendance Report</a>
+=======
+          <a href="attendance_report.php" class="menu-item">attendance_report</a>
+>>>>>>> Stashed changes
     <a href="fee_management.php">💰 Fee Management</a>
     <a href="logout.php">🚪 Logout</a>
 </div>
