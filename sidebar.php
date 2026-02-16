@@ -4,6 +4,7 @@
     <a href="manage_teachers.php" id="nav-teachers">👨‍🏫 Manage Teachers</a>
     <a href="manage_staff.php" id="nav-staff">🛠️ Manage Staff</a>
     <a href="manage_students.php" id="nav-students">🎓 Manage Students</a>
+  
    
     <a href="attendance.php" id="nav-attend">📅 Mark Attendance</a>
 <a href="attendance_report.php" id="nav-report">📊 Attendance Report</a>

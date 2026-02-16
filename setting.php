@@ -1,178 +1,119 @@
 <?php
 session_start();
-include 'db.php';
+include('db.php');
 
-// 1. Session Check
-if (!isset($_SESSION['role'])) { 
-    header("Location: login.php"); 
-    exit(); 
+// 1. Security Check
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
 }
 
-$username = $_SESSION['username'];
-$message = "";
+$user_id = $_SESSION['user_id'];
+$msg = "";
+$error = "";
 
-// 2. Database Fetch with Safety (Fixes Line 11 Error)
-$school_res = $conn->query("SELECT * FROM school_settings WHERE id=1");
-if (!$school_res || $school_res->num_rows == 0) {
-    // Agar table khali ho toh error ke bajaye ek dummy row bana dein
-    $conn->query("INSERT INTO school_settings (id, school_name) VALUES (1, 'Your School Name')");
-    $school_res = $conn->query("SELECT * FROM school_settings WHERE id=1");
-}
-$school = $school_res->fetch_assoc();
-$saved_fees = json_decode($school['class_fees'] ?? '{}', true);
+// 2. Handle Profile & Password Update
+if (isset($_POST['update_settings'])) {
+    $username = mysqli_real_escape_string($conn, $_POST['username']);
+    $new_pass = $_POST['new_password'];
+    $confirm_pass = $_POST['confirm_password'];
 
-// 3. Update School Profile Logic
-if (isset($_POST['update_school'])) {
-    $s_name = mysqli_real_escape_string($conn, $_POST['school_name']);
-    $s_phone = mysqli_real_escape_string($conn, $_POST['phone']);
-    $s_email = mysqli_real_escape_string($conn, $_POST['email']);
-    $s_address = mysqli_real_escape_string($conn, $_POST['address']);
-    $s_session = mysqli_real_escape_string($conn, $_POST['current_session']);
+    // Username update
+    $update_user = mysqli_query($conn, "UPDATE users SET username = '$username' WHERE id = '$user_id'");
     
-    // Fee data ko JSON mein convert karna
-    $fees = [];
-    for($i=1; $i<=10; $i++) {
-        $fees["Class $i"] = $_POST["fee_$i"] ?? 0;
+    if ($update_user) {
+        $_SESSION['username'] = $username; // Session update
+        $msg = "Profile updated successfully!";
     }
-    $fees_json = mysqli_real_escape_string($conn, json_encode($fees));
 
-    $update_sql = "UPDATE school_settings SET 
-                   school_name='$s_name', phone='$s_phone', email='$s_email', 
-                   address='$s_address', current_session='$s_session', 
-                   class_fees='$fees_json' WHERE id=1";
-    
-    if($conn->query($update_sql)) {
-        $message = "<div class='alert success'>✅ Settings saved successfully!</div>";
-        header("Refresh:1"); // Data update hone ke baad page reload
-    } else {
-        $message = "<div class='alert danger'>❌ Error: " . $conn->error . "</div>";
+    // Password update logic (agar fill kiya ho)
+    if (!empty($new_pass)) {
+        if ($new_pass === $confirm_pass) {
+            // Note: Real world mein password_hash() use karna chahiye
+            $update_pass = mysqli_query($conn, "UPDATE users SET password = '$new_pass' WHERE id = '$user_id'");
+            $msg = "Profile and Password updated successfully!";
+        } else {
+            $error = "Passwords do not match!";
+        }
     }
 }
 
-// 4. Update Password Logic
-if (isset($_POST['update_password'])) {
-    $curr_p = mysqli_real_escape_string($conn, $_POST['current_password']);
-    $new_p = mysqli_real_escape_string($conn, $_POST['new_password']);
-
-    $chk = $conn->query("SELECT id FROM users WHERE username='$username' AND password='$curr_p'");
-    if($chk && $chk->num_rows > 0) {
-        $conn->query("UPDATE users SET password='$new_p' WHERE username='$username'");
-        $message = "<div class='alert success'>✅ Password updated successfully!</div>";
-    } else {
-        $message = "<div class='alert danger'>❌ Current password is incorrect!</div>";
-    }
-}
+// 3. Fetch current user data
+$user_data = mysqli_query($conn, "SELECT * FROM users WHERE id = '$user_id'");
+$user = mysqli_fetch_assoc($user_data);
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>System Configuration | <?php echo htmlspecialchars($school['school_name']); ?></title>
+    <title>Profile Settings | School ERP</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #2c3e50; --accent: #3498db; --bg: #f4f7f6; --success: #2ecc71; --danger: #e74c3c; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: var(--bg); }
-        
-        /* Sidebar and Main Content Layout Fix */
-        .main-content { margin-left: 260px; flex: 1; padding: 40px; min-height: 100vh; }
-        
-        .container { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 30px; }
-        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        
-        h3 { color: var(--primary); border-bottom: 2px solid #f1f1f1; padding-bottom: 10px; margin-bottom: 20px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #555; }
-        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
-        
-        /* Fee Grid Styling */
-        .fee-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8f9fa; padding: 15px; border-radius: 10px; }
-        .fee-item { display: flex; align-items: center; gap: 10px; }
-        .fee-item span { min-width: 60px; font-weight: bold; font-size: 13px; }
-
-        .btn { border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; color: white; transition: 0.3s; }
-        .btn-save { background: var(--success); }
-        .btn-pass { background: var(--accent); }
-        .alert { padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
-        .success { background: #d4edda; color: #155724; border-left: 5px solid var(--success); }
-        .danger { background: #f8d7da; color: #721c24; border-left: 5px solid var(--danger); }
+        :root { --primary: #1e293b; --accent: #3b82f6; --bg: #f1f5f9; }
+        body { font-family: 'Poppins', sans-serif; margin: 0; display: flex; background: var(--bg); }
+        .sidebar { width: 260px; background: var(--primary); color: white; height: 100vh; position: fixed; }
+        .sidebar-header { padding: 25px; background: #0f172a; text-align: center; font-weight: 700; }
+        .sidebar a { padding: 15px 25px; color: #94a3b8; text-decoration: none; display: block; border-bottom: 1px solid #334155; }
+        .sidebar a:hover, .active { background: #334155; color: white; border-left: 5px solid var(--accent); }
+        .main { margin-left: 260px; flex: 1; padding: 40px; }
+        .card { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 600px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; color: #64748b; font-size: 14px; }
+        input { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; box-sizing: border-box; outline: none; }
+        .btn-save { background: var(--accent); color: white; border: none; padding: 12px 30px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%; margin-top: 10px; }
+        .alert { padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+        .success { background: #dcfce7; color: #166534; }
+        .danger { background: #fee2e2; color: #991b1b; }
+        .info-box { background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent); margin-bottom: 25px; }
     </style>
 </head>
 <body>
 
-    <?php include 'sidebar.php'; ?>
+<div class="sidebar">
+    <div class="sidebar-header">SCHOOL ERP</div>
+    <a href="dashboard.php">🏠 Dashboard</a>
+    <a href="manage_students.php">🎓 Manage Students</a>
+    <a href="attendance.php">📅 Mark Attendance</a>
+    <a href="attendance_report.php">📊 Attendance Report</a>
+    <a href="setting.php" class="active">⚙️ Profile Settings</a>
+    <a href="logout.php">🚪 Logout</a>
+</div>
 
-    <div class="main-content">
-        <h1 style="color: var(--primary);">⚙️ System Configuration</h1>
-        <?php echo $message; ?>
-
-        <div class="container">
-            <div class="card">
-                <h3>🏫 School Profile</h3>
-                <form method="POST">
-                    <div class="form-group">
-                        <label>School Name</label>
-                        <input type="text" name="school_name" value="<?php echo htmlspecialchars($school['school_name']); ?>" required>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label>Contact Number</label>
-                            <input type="text" name="phone" value="<?php echo htmlspecialchars($school['phone'] ?? ''); ?>">
-                        </div>
-                        <div class="form-group">
-                            <label>Official Email</label>
-                            <input type="email" name="email" value="<?php echo htmlspecialchars($school['email'] ?? ''); ?>">
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Academic Session</label>
-                        <select name="current_session">
-                            <option value="2024-2025" <?php if(($school['current_session']??'')=='2024-2025') echo 'selected'; ?>>2024-2025</option>
-                            <option value="2025-2026" <?php if(($school['current_session']??'')=='2025-2026') echo 'selected'; ?>>2025-2026</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Address</label>
-                        <textarea name="address" rows="2"><?php echo htmlspecialchars($school['address'] ?? ''); ?></textarea>
-                    </div>
-
-                    <h3>💰 Monthly Fee Structure</h3>
-                    <div class="fee-grid">
-                        <?php for($i=1; $i<=10; $i++): ?>
-                        <div class="fee-item">
-                            <span>Class <?php echo $i; ?></span>
-                            <input type="number" name="fee_<?php echo $i; ?>" value="<?php echo $saved_fees["Class $i"] ?? ''; ?>" placeholder="0.00">
-                        </div>
-                        <?php endfor; ?>
-                    </div>
-
-                    <button type="submit" name="update_school" class="btn btn-save" style="margin-top: 20px;">💾 Save Configuration</button>
-                </form>
-            </div>
-
-            <div class="card">
-                <h3>🔒 Password Security</h3>
-                <form method="POST">
-                    <div class="form-group">
-                        <label>Current Password</label>
-                        <input type="password" name="current_password" required placeholder="••••••••">
-                    </div>
-                    <div class="form-group">
-                        <label>New Password</label>
-                        <input type="password" name="new_password" required placeholder="New password">
-                    </div>
-                    <button type="submit" name="update_password" class="btn btn-pass">🔄 Update Password</button>
-                </form>
-                
-                <div style="margin-top: 30px; padding: 20px; background: #eef2f7; border-radius: 10px; font-size: 14px;">
-                    <p><strong>Logged User:</strong> <?php echo $username; ?></p>
-                    <p><strong>System Role:</strong> <span class="role-badge"><?php echo strtoupper($_SESSION['role']); ?></span></p>
-                </div>
-            </div>
+<div class="main">
+    <h2>⚙️ Profile Settings</h2>
+    
+    <div class="card">
+        <div class="info-box">
+            <p style="margin:0; font-size:14px;">Logged in as: <b><?php echo strtoupper($user['role']); ?></b></p>
         </div>
+
+        <?php if($msg) echo "<div class='alert success'>✅ $msg</div>"; ?>
+        <?php if($error) echo "<div class='alert danger'>❌ $error</div>"; ?>
+
+        <form method="POST">
+            <div class="form-group">
+                <label>Full Username</label>
+                <input type="text" name="username" value="<?php echo htmlspecialchars($user['username']); ?>" required>
+            </div>
+
+            <hr style="border:0; border-top:1px solid #eee; margin:30px 0;">
+            <p style="font-size: 13px; color: #94a3b8; margin-bottom: 15px;">Leave password fields blank if you don't want to change it.</p>
+
+            <div class="form-group">
+                <label>New Password</label>
+                <input type="password" name="new_password" placeholder="Enter new password">
+            </div>
+
+            <div class="form-group">
+                <label>Confirm New Password</label>
+                <input type="password" name="confirm_password" placeholder="Confirm new password">
+            </div>
+
+            <button type="submit" name="update_settings" class="btn-save">💾 Save Changes</button>
+        </form>
     </div>
+</div>
 
 </body>
 </html>

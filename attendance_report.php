@@ -1,174 +1,167 @@
-<?php
+<?php 
 session_start();
-include 'db.php';
 
-if (!isset($_SESSION['role'])) { header("Location: index.php"); exit(); }
+// 1. Security Check: Agar login nahi hai to login page par bhej do
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
 
-// Filter parameters
-$month = isset($_GET['month']) ? $_GET['month'] : date('m');
-$year = isset($_GET['year']) ? $_GET['year'] : date('Y');
-$selected_class = isset($_GET['class']) ? $_GET['class'] : '';
-$search_name = isset($_GET['search']) ? mysqli_real_escape_string($conn, $_GET['search']) : '';
+include('db.php');
 
-$days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+// Filter setup
+$selected_date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
+$selected_class = isset($_GET['class']) ? mysqli_real_escape_string($conn, $_GET['class']) : '';
 
-// Student fetching with filters
-$query = "SELECT id, name, roll_no, class FROM students WHERE status = 1";
-if ($selected_class) { $query .= " AND class = '$selected_class'"; }
-if ($search_name) { $query .= " AND (name LIKE '%$search_name%' OR roll_no LIKE '%$search_name%')"; }
-$students = $conn->query($query);
+// Exact School Sequence
+$ordered_classes = ['Nursery', 'Prep', '1', '2', '3', '4', '5', '6', '7', '8', '9th', '10th', '1st year', '2nd year'];
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Monthly Attendance Report</title>
+    <title>Attendance Report | School ERP</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        :root { --primary: #2c3e50; --accent: #3498db; --bg: #f4f7f6; --success: #2ecc71; --danger: #e74c3c; }
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; background: var(--bg); }
-        .main { margin-left: 260px; flex: 1; padding: 25px; transition: 0.3s; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        :root { --primary: #1e293b; --accent: #3b82f6; --bg: #f1f5f9; --success: #22c55e; --danger: #ef4444; }
+        body { font-family: 'Poppins', sans-serif; margin: 0; display: flex; background: var(--bg); color: #334155; }
         
-        /* Filters Styling */
-        .filter-header { display: flex; gap: 15px; margin-bottom: 20px; align-items: center; background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #eee; flex-wrap: wrap; }
-        .filter-header input, .filter-header select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; }
-        .btn-search { background: var(--accent); color: white; border: none; padding: 8px 20px; border-radius: 5px; cursor: pointer; }
-        .btn-print { background: #34495e; color: white; border: none; padding: 8px 20px; border-radius: 5px; cursor: pointer; margin-left: auto; }
+        /* Sidebar */
+        .sidebar { width: 260px; background: var(--primary); color: white; height: 100vh; position: fixed; }
+        .sidebar-header { padding: 25px; background: #0f172a; text-align: center; font-weight: 700; }
+        .sidebar a { padding: 15px 25px; color: #94a3b8; text-decoration: none; display: block; border-bottom: 1px solid #334155; }
+        .sidebar a:hover, .active { background: #334155; color: white; border-left: 5px solid var(--accent); }
+        
+        /* Main Content */
+        .main { margin-left: 260px; flex: 1; padding: 40px; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        
+        /* Filters */
+        .filter-bar { display: flex; gap: 20px; margin-bottom: 30px; background: #f8fafc; padding: 20px; border-radius: 10px; align-items: flex-end; }
+        .filter-bar input, .filter-bar select { padding: 10px; border: 1px solid #ddd; border-radius: 8px; outline: none; }
+        
+        /* Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
+        .stat-item { padding: 20px; border-radius: 12px; color: white; text-align: center; }
+        .bg-1 { background: #6366f1; } .bg-2 { background: #10b981; } .bg-3 { background: #f43f5e; } .bg-4 { background: #f59e0b; }
+        .stat-item h3 { margin: 0; font-size: 24px; }
+        .stat-item p { margin: 5px 0 0; font-size: 13px; opacity: 0.9; }
 
-        /* Professional Report Table */
-        .report-wrapper { overflow-x: auto; position: relative; border-radius: 8px; border: 1px solid #eee; }
-        .report-table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        .report-table th, .report-table td { border: 1px solid #eee; padding: 8px; text-align: center; }
+        /* Table */
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 15px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; color: #64748b; font-size: 0.85rem; }
+        td { padding: 15px; border-bottom: 1px solid #f1f5f9; }
         
-        /* Sticky Column Logic */
-        .report-table th { background: var(--primary); color: white; position: sticky; top: 0; z-index: 10; }
-        .sticky-col { position: sticky; left: 0; background: #fdfdfd !important; z-index: 5; text-align: left; font-weight: bold; border-right: 2px solid #ddd !important; }
-        
-        /* Attendance Symbols Colors */
-        .P { background: #e8f5e9; color: #2e7d32; font-weight: bold; }
-        .A { background: #ffebee; color: #c62828; font-weight: bold; }
-        .L { background: #fffde7; color: #f9a825; font-weight: bold; }
-        .LV { background: #f3e5f5; color: #7b1fa2; font-weight: bold; }
-        
-        .percentage-cell { font-weight: bold; background: #f8f9fa; }
-        .low-att { color: var(--danger); }
+        /* Badges */
+        .badge { padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
+        .p-badge { background: #dcfce7; color: #166534; }
+        .a-badge { background: #fee2e2; color: #991b1b; }
 
-        /* Print Settings */
+        /* Print Button */
+        .btn-print { background: white; border: 1px solid #ddd; padding: 10px 20px; border-radius: 8px; cursor: pointer; float: right; font-weight: 500; }
+        .btn-print:hover { background: #f9f9f9; }
+
         @media print {
-            .sidebar, .filter-header, .btn-print { display: none !important; }
-            .main { margin-left: 0 !important; padding: 0 !important; }
-            .sticky-col { position: static !important; border: 1px solid #ddd !important; }
+            .sidebar, .filter-bar, .btn-print { display: none; }
+            .main { margin-left: 0; padding: 0; }
             .card { box-shadow: none; border: none; }
         }
     </style>
 </head>
 <body>
 
-<?php include 'sidebar.php'; ?>
+<div class="sidebar">
+    <div class="sidebar-header">SCHOOL ERP</div>
+    <a href="dashboard.php">🏠 Dashboard</a>
+    <a href="manage_students.php">🎓 Manage Students</a>
+    <a href="attendance.php">📅 Mark Attendance</a>
+    <a href="attendance_report.php" class="active">📊 Attendance Report</a>
+    <a href="logout.php">🚪 Logout</a>
+</div>
 
 <div class="main">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-        <h2>📊 Monthly Attendance Report</h2>
-        <button class="btn-print" onclick="window.print()">🖨️ Print as PDF</button>
-    </div>
-
+    <button class="btn-print" onclick="window.print()">🖨️ Print Report</button>
+    <h2>📊 Attendance Analysis Report</h2>
+    
     <div class="card">
-        <form method="GET" class="filter-header">
-            <input type="text" name="search" placeholder="Search Name or Roll No..." value="<?php echo htmlspecialchars($search_name); ?>">
-            
-            <select name="month">
-                <?php for($m=1; $m<=12; $m++): $v = sprintf("%02d", $m); ?>
-                    <option value="<?php echo $v; ?>" <?php if($month == $v) echo 'selected'; ?>><?php echo date('F', mktime(0,0,0,$m,1)); ?></option>
-                <?php endfor; ?>
-            </select>
-
-            <select name="year">
-                <?php for($y=2024; $y<=2026; $y++): ?>
-                    <option value="<?php echo $y; ?>" <?php if($year == $y) echo 'selected'; ?>><?php echo $y; ?></option>
-                <?php endfor; ?>
-            </select>
-
-            <select name="class">
-                <option value="">All Classes</option>
-                <?php 
-                $classes = ['1st', '2nd', '3rd', '10th', 'bscs'];
-                foreach($classes as $c) {
-                    $sel = ($selected_class == $c) ? 'selected' : '';
-                    echo "<option value='$c' $sel>$c Class</option>";
-                }
-                ?>
-            </select>
-
-            <button type="submit" class="btn-search">🔍 Filter</button>
+        <form method="GET" class="filter-bar">
+            <div style="display:flex; flex-direction:column; gap:5px;">
+                <label style="font-size: 12px; font-weight: 600;">Date</label>
+                <input type="date" name="date" value="<?php echo $selected_date; ?>">
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+                <label style="font-size: 12px; font-weight: 600;">Class</label>
+                <select name="class" required>
+                    <option value="">-- Select Class --</option>
+                    <?php foreach($ordered_classes as $cl): ?>
+                        <option value="<?php echo $cl; ?>" <?php if($selected_class == $cl) echo 'selected'; ?>>Class <?php echo $cl; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button type="submit" style="padding:11px 25px; background:var(--accent); color:white; border:none; border-radius:8px; cursor:pointer; font-weight:600;">Generate Report</button>
         </form>
 
-        <div class="report-wrapper">
-            <table class="report-table">
+        <?php if($selected_class): ?>
+            <?php 
+            // 1. Total Students
+            $res_total = mysqli_query($conn, "SELECT id FROM students WHERE class = '$selected_class'");
+            $total_std = mysqli_num_rows($res_total);
+
+            // 2. Present/Absent counts
+            $res_p = mysqli_query($conn, "SELECT id FROM attendance WHERE class = '$selected_class' AND date = '$selected_date' AND status = 'P'");
+            $p_count = mysqli_num_rows($res_p);
+
+            $res_a = mysqli_query($conn, "SELECT id FROM attendance WHERE class = '$selected_class' AND date = '$selected_date' AND status = 'A'");
+            $a_count = mysqli_num_rows($res_a);
+
+            $perc = ($total_std > 0) ? round(($p_count / $total_std) * 100, 1) : 0;
+            ?>
+
+            <div class="stats-grid">
+                <div class="stat-item bg-1"><h3><?php echo $total_std; ?></h3><p>Total Students</p></div>
+                <div class="stat-item bg-2"><h3><?php echo $p_count; ?></h3><p>Present</p></div>
+                <div class="stat-item bg-3"><h3><?php echo $a_count; ?></h3><p>Absent</p></div>
+                <div class="stat-item bg-4"><h3><?php echo $perc; ?>%</h3><p>Attendance Rate</p></div>
+            </div>
+
+            <table>
                 <thead>
-                    <tr>
-                        <th class="sticky-col">Student Name & Roll No</th>
-                        <?php for($d=1; $d<=$days_in_month; $d++) echo "<th>$d</th>"; ?>
-                        <th style="background:#27ae60;">P</th>
-                        <th style="background:#c0392b;">A</th>
-                        <th style="background:#34495e;">%</th>
-                    </tr>
+                    <tr><th>Roll No</th><th>Student Name</th><th>Status</th></tr>
                 </thead>
                 <tbody>
-                    <?php if($students->num_rows > 0): ?>
-                        <?php while($s = $students->fetch_assoc()): 
-                            $sid = $s['id'];
-                            $p_count = 0; $a_count = 0;
-                        ?>
+                    <?php 
+                    $sql = "SELECT s.roll_no, s.name, a.status 
+                            FROM students s 
+                            LEFT JOIN attendance a ON s.id = a.student_id AND a.date = '$selected_date'
+                            WHERE s.class = '$selected_class' 
+                            ORDER BY CAST(s.roll_no AS UNSIGNED) ASC";
+                    $res = mysqli_query($conn, $sql);
+
+                    if(mysqli_num_rows($res) > 0):
+                        while($row = mysqli_fetch_assoc($res)): ?>
                         <tr>
-                            <td class="sticky-col">
-                                <?php echo $s['name']; ?><br>
-                                <small style="color:#777; font-weight:normal;"><?php echo $s['roll_no']; ?></small>
-                            </td>
-                            <?php for($d=1; $d<=$days_in_month; $d++): 
-                                $current_date = "$year-$month-" . sprintf("%02d", $d);
-                                $att_data = $conn->query("SELECT status FROM attendance WHERE student_id = $sid AND attendance_date = '$current_date'")->fetch_assoc();
-                                
-                                $status = $att_data['status'] ?? '-';
-                                $short = ($status != '-') ? substr($status, 0, 1) : '-';
-                                if($status == 'Leave') $short = 'LV'; // special case for Leave
-
-                                // Statistics logic
-                                if($status == 'Present' || $status == 'Late') $p_count++;
-                                if($status == 'Absent') $a_count++;
-
-                                echo "<td class='$status'>$short</td>";
-                            endfor; 
-                            
-                            $percent = round(($p_count / $days_in_month) * 100);
-                            ?>
-                            <td class="percentage-cell" style="color:green;"><?php echo $p_count; ?></td>
-                            <td class="percentage-cell" style="color:red;"><?php echo $a_count; ?></td>
-                            <td class="percentage-cell <?php echo ($percent < 75) ? 'low-att' : ''; ?>">
-                                <?php echo $percent; ?>%
+                            <td><b>#<?php echo $row['roll_no']; ?></b></td>
+                            <td><?php echo strtoupper($row['name']); ?></td>
+                            <td>
+                                <?php 
+                                if($row['status'] == 'P') echo '<span class="badge p-badge">PRESENT</span>';
+                                elseif($row['status'] == 'A') echo '<span class="badge a-badge">ABSENT</span>';
+                                else echo '<span style="color:#94a3b8; font-size:12px;">NOT MARKED</span>';
+                                ?>
                             </td>
                         </tr>
-                        <?php endwhile; ?>
-                    <?php else: ?>
-                        <tr><td colspan="<?php echo $days_in_month + 4; ?>">No students found.</td></tr>
+                    <?php endwhile; else: ?>
+                        <tr><td colspan="3" style="text-align:center; padding:20px;">No students found for this class.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
-        </div>
-        
-        <div style="margin-top: 20px; display: flex; gap: 20px; font-size: 13px;">
-            <div><span style="color:green; font-weight:bold;">P:</span> Present</div>
-            <div><span style="color:red; font-weight:bold;">A:</span> Absent</div>
-            <div><span style="color:orange; font-weight:bold;">L:</span> Late (Counts as P)</div>
-            <div><span style="color:purple; font-weight:bold;">LV:</span> Leave</div>
-        </div>
+        <?php else: ?>
+            <div style="text-align:center; color:#94a3b8; padding:40px;">
+                <p>Please select a class and click "Generate Report" to view details.</p>
+            </div>
+        <?php endif; ?>
     </div>
 </div>
-
-<script>
-    // Sidebar highlight
-    document.getElementById('nav-attend').classList.add('active-link');
-</script>
-
 </body>
 </html>
